@@ -1,38 +1,42 @@
 import tkinter as tk
 from tkinter import messagebox
+import json
+import os
 
-
-# --- STRUCTURI DE DATE (Linked List) ---
 
 class NodUtilizator:
-    """Aceasta este structura (nodul) care ține datele unui singur utilizator."""
-
-    def __init__(self, username, parola):
+    def __init__(self, username, parola, exercitiu_activ=None):
         self.username = username
         self.parola = parola
-        self.antrenament_activ = None  # Aici vom stoca ulterior antrenamentul
-        self.urmatorul = None  # Pointer către următorul utilizator din listă
+        self.exercitiu_activ = exercitiu_activ
+        self.urmatorul = None
 
 
 class ListaUtilizatori:
-    """Aceasta gestionează lista de noduri."""
-
     def __init__(self):
-        self.head = None  # Capul listei (primul utilizator)
+        self.head = None
+        self.fisier_salvare = "users.json"
 
-    def adauga_utilizator(self, username, parola):
-        nou_nod = NodUtilizator(username, parola)
+    def adauga_utilizator(self, username, parola, exercitiu_activ=None):
+        nou_nod = NodUtilizator(username, parola, exercitiu_activ)
         if not self.head:
             self.head = nou_nod
         else:
-            # Parcurgem lista până la final și adăugăm noul nod
             curent = self.head
             while curent.urmatorul:
                 curent = curent.urmatorul
             curent.urmatorul = nou_nod
+        return nou_nod
+
+    def gaseste_utilizator(self, username, parola):
+        curent = self.head
+        while curent:
+            if curent.username == username and curent.parola == parola:
+                return curent
+            curent = curent.urmatorul
+        return None
 
     def exista_username(self, username):
-        """Verifică dacă username-ul există deja în listă."""
         curent = self.head
         while curent:
             if curent.username == username:
@@ -40,31 +44,50 @@ class ListaUtilizatori:
             curent = curent.urmatorul
         return False
 
-    def valideaza_login(self, username, parola):
-        """Caută perechea username/parolă. Returnează True dacă e corect."""
+    def salveaza_datele(self):
+        data_de_salvat = []
         curent = self.head
         while curent:
-            if curent.username == username and curent.parola == parola:
-                return True
+            user_dict = {
+                "username": curent.username,
+                "parola": curent.parola,
+                "exercitiu_activ": curent.exercitiu_activ
+            }
+            data_de_salvat.append(user_dict)
             curent = curent.urmatorul
-        return False
 
+        with open(self.fisier_salvare, "w") as f:
+            json.dump(data_de_salvat, f, indent=4)
 
-# --- APLICAȚIA PRINCIPALĂ ---
+    def incarca_datele(self):
+        if not os.path.exists(self.fisier_salvare):
+            return
+
+        try:
+            with open(self.fisier_salvare, "r") as f:
+                data_incarcata = json.load(f)
+                for user in data_incarcata:
+                    activ = user.get("exercitiu_activ")
+                    self.adauga_utilizator(user["username"], user["parola"], activ)
+        except:
+            pass
+
 
 class AplicatieFitness(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Aplicație Activitate Fizică")
-        self.geometry("400x550")
+        self.geometry("450x600")
 
-        # Inițializăm lista de utilizatori
         self.lista_utilizatori = ListaUtilizatori()
+        self.lista_utilizatori.incarca_datele()
 
-        # Adăugăm un user de test (opțional, ca să nu trebuiască să creezi unul mereu)
-        self.lista_utilizatori.adauga_utilizator("admin", "1234")
+        self.user_curent = None
 
-        # Containerul principal
+        if not self.lista_utilizatori.head:
+            self.lista_utilizatori.adauga_utilizator("admin", "1234")
+            self.lista_utilizatori.salveaza_datele()
+
         container = tk.Frame(self)
         container.pack(side="top", fill="both", expand=True)
         container.grid_rowconfigure(0, weight=1)
@@ -72,7 +95,6 @@ class AplicatieFitness(tk.Tk):
 
         self.frames = {}
 
-        # Lista tuturor paginilor
         for F in (PaginaStart, PaginaLogin, PaginaSignUp, PaginaSucces, PaginaDashboard):
             page_name = F.__name__
             frame = F(parent=container, controller=self)
@@ -83,10 +105,18 @@ class AplicatieFitness(tk.Tk):
 
     def show_frame(self, page_name):
         frame = self.frames[page_name]
+        if page_name == "PaginaDashboard":
+            frame.construieste_dashboard()
         frame.tkraise()
 
+    def login_user(self, nod_user):
+        self.user_curent = nod_user
+        self.show_frame("PaginaDashboard")
 
-# --- PAGINILE ---
+    def logout_user(self):
+        self.user_curent = None
+        self.show_frame("PaginaStart")
+
 
 class PaginaStart(tk.Frame):
     def __init__(self, parent, controller):
@@ -108,17 +138,14 @@ class PaginaSignUp(tk.Frame):
 
         tk.Label(self, text="Creare Cont Nou", font=("Arial", 16)).pack(pady=20)
 
-        # Username
         tk.Label(self, text="Alege un Username:").pack()
         self.entry_user = tk.Entry(self)
         self.entry_user.pack(pady=5)
 
-        # Parola
         tk.Label(self, text="Alege o Parolă:").pack()
         self.entry_pass = tk.Entry(self, show="*")
         self.entry_pass.pack(pady=5)
 
-        # Confirmare Parolă
         tk.Label(self, text="Confirmă Parola:").pack()
         self.entry_confirm = tk.Entry(self, show="*")
         self.entry_confirm.pack(pady=5)
@@ -134,7 +161,6 @@ class PaginaSignUp(tk.Frame):
         parola = self.entry_pass.get()
         confirm = self.entry_confirm.get()
 
-        # Validări
         if not user or not parola:
             messagebox.showwarning("Eroare", "Toate câmpurile sunt obligatorii!")
             return
@@ -143,31 +169,26 @@ class PaginaSignUp(tk.Frame):
             messagebox.showerror("Eroare", "Parolele nu se potrivesc!")
             return
 
-        # Verificăm în lista de structuri dacă userul există deja
         if self.controller.lista_utilizatori.exista_username(user):
             messagebox.showerror("Eroare", f"Username-ul '{user}' este deja folosit!")
             return
 
-        # Dacă totul e ok, adăugăm în listă
         self.controller.lista_utilizatori.adauga_utilizator(user, parola)
+        self.controller.lista_utilizatori.salveaza_datele()
 
-        # Curățăm câmpurile
         self.entry_user.delete(0, 'end')
         self.entry_pass.delete(0, 'end')
         self.entry_confirm.delete(0, 'end')
 
-        # Mergem la pagina de succes
         self.controller.show_frame("PaginaSucces")
 
 
 class PaginaSucces(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent)
-
         label = tk.Label(self, text="Contul a fost creat\ncu succes!",
                          font=("Arial", 16), fg="green")
         label.pack(pady=50)
-
         tk.Button(self, text="Înapoi la Pagina de Start", width=25, height=2,
                   command=lambda: controller.show_frame("PaginaStart")).pack(pady=20)
 
@@ -197,11 +218,12 @@ class PaginaLogin(tk.Frame):
         user = self.entry_user.get()
         parola = self.entry_pass.get()
 
-        # Verificăm folosind lista de structuri din controller
-        if self.controller.lista_utilizatori.valideaza_login(user, parola):
-            self.controller.show_frame("PaginaDashboard")
+        nod_gasit = self.controller.lista_utilizatori.gaseste_utilizator(user, parola)
+
+        if nod_gasit:
             self.entry_user.delete(0, 'end')
             self.entry_pass.delete(0, 'end')
+            self.controller.login_user(nod_gasit)
         else:
             messagebox.showerror("Eroare", "Username sau parolă greșită!")
 
@@ -209,39 +231,95 @@ class PaginaLogin(tk.Frame):
 class PaginaDashboard(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent)
+        self.controller = controller
 
-        label = tk.Label(self, text="Alege Antrenamentul", font=("Arial", 16))
-        label.pack(pady=20)
+        self.top_frame = tk.Frame(self)
+        self.top_frame.pack(fill="x", pady=10)
+        tk.Label(self.top_frame, text="Alege Antrenamentul", font=("Arial", 16)).pack()
 
-        lista_frame = tk.Frame(self)
-        lista_frame.pack(fill="both", expand=True, padx=20)
+        self.canvas = tk.Canvas(self)
+        self.scrollbar = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = tk.Frame(self.canvas)
 
-        antrenamente = ["Antrenament Piept", "Antrenament Picioare", "Antrenament Spate", "Cardio"]
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
 
-        for nume in antrenamente:
-            self.creeaza_antrenament(lista_frame, nume)
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        tk.Button(self, text="Delogare", bg="#ffcccc",
-                  command=lambda: controller.show_frame("PaginaStart")).pack(pady=20)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
 
-    def creeaza_antrenament(self, parent, nume_antrenament):
-        item_frame = tk.Frame(parent, borderwidth=1, relief="solid")
-        item_frame.pack(fill="x", pady=5)
+        self.date_antrenamente = {
+            "Antrenament Piept": ["Bench Press", "Flyers", "Cable Crossovers"],
+            "Antrenament Picioare": ["Leg Press", "Calf Raises", "Squats"],
+            "Antrenament Spate": ["Seated Cable Rows", "Deadlift", "Pull Ups"],
+            "Antrenament Brate": ["Bicep Curl", "Tricep Dips", "Overhead Press"]
+        }
 
-        optiuni_frame = tk.Frame(item_frame)
+    def construieste_dashboard(self):
+        for widget in self.scrollable_frame.winfo_children():
+            widget.destroy()
 
-        def toggle_optiuni():
-            if optiuni_frame.winfo_viewable():
-                optiuni_frame.pack_forget()
+        tk.Label(self.scrollable_frame, text=f"Utilizator: {self.controller.user_curent.username}",
+                 fg="gray").pack(pady=5)
+
+        for categorie, exercitii in self.date_antrenamente.items():
+            self.creeaza_categorie(self.scrollable_frame, categorie, exercitii)
+
+        tk.Button(self.scrollable_frame, text="Delogare", bg="#ffcccc",
+                  command=self.controller.logout_user).pack(pady=20)
+
+    def creeaza_categorie(self, parent, categorie, lista_exercitii):
+        frame_categorie = tk.Frame(parent, borderwidth=1, relief="solid")
+        frame_categorie.pack(fill="x", pady=5, padx=10)
+
+        frame_exercitii = tk.Frame(frame_categorie)
+
+        def toggle_exercitii():
+            if frame_exercitii.winfo_viewable():
+                frame_exercitii.pack_forget()
             else:
-                optiuni_frame.pack(fill="x", pady=5)
+                frame_exercitii.pack(fill="x", pady=5)
 
-        tk.Button(item_frame, text=nume_antrenament, command=toggle_optiuni,
-                  font=("Arial", 10, "bold")).pack(fill="x")
+        tk.Button(frame_categorie, text=categorie, command=toggle_exercitii,
+                  font=("Arial", 11, "bold"), bg="#e0e0e0").pack(fill="x")
 
-        tk.Button(optiuni_frame, text="Opțiunea 1 (Detalii)", width=25).pack()
-        tk.Button(optiuni_frame, text="Opțiunea 2 (Start)", width=25).pack()
-        tk.Button(optiuni_frame, text="Opțiunea 3 (Istoric)", width=25).pack()
+        exercitiu_activ_user = self.controller.user_curent.exercitiu_activ
+
+        for ex in lista_exercitii:
+            row_frame = tk.Frame(frame_exercitii)
+            row_frame.pack(fill="x", pady=2, padx=10)
+
+            tk.Label(row_frame, text=ex, anchor="w").pack(side="left")
+
+            if exercitiu_activ_user == ex:
+                btn_frame = tk.Frame(row_frame)
+                btn_frame.pack(side="right")
+
+                tk.Button(btn_frame, text="Vezi Progres", bg="lightblue", font=("Arial", 8),
+                          command=lambda e=ex: self.arata_progres(e)).pack(side="left", padx=2)
+
+                tk.Button(btn_frame, text="STOP", bg="#ffcccc", font=("Arial", 8),
+                          command=self.stop_exercitiu).pack(side="left", padx=2)
+            else:
+                tk.Button(row_frame, text="START", bg="#90ee90", font=("Arial", 8),
+                          command=lambda e=ex: self.porneste_exercitiu(e)).pack(side="right")
+
+    def porneste_exercitiu(self, nume_exercitiu):
+        self.controller.user_curent.exercitiu_activ = nume_exercitiu
+        self.controller.lista_utilizatori.salveaza_datele()
+        self.construieste_dashboard()
+
+    def stop_exercitiu(self):
+        self.controller.user_curent.exercitiu_activ = None
+        self.controller.lista_utilizatori.salveaza_datele()
+        self.construieste_dashboard()
+
+    def arata_progres(self, nume):
+        messagebox.showinfo("Progres", f"Aici vei vedea progresul pentru: {nume}")
 
 
 if __name__ == "__main__":
