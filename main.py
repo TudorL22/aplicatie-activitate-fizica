@@ -5,10 +5,10 @@ import os
 
 
 class NodUtilizator:
-    def __init__(self, username, parola, exercitiu_activ=None):
+    def __init__(self, username, parola, exercitii_active=None):
         self.username = username
         self.parola = parola
-        self.exercitiu_activ = exercitiu_activ
+        self.exercitii_active = exercitii_active if exercitii_active is not None else []
         self.urmatorul = None
 
 
@@ -17,8 +17,8 @@ class ListaUtilizatori:
         self.head = None
         self.fisier_salvare = "users.json"
 
-    def adauga_utilizator(self, username, parola, exercitiu_activ=None):
-        nou_nod = NodUtilizator(username, parola, exercitiu_activ)
+    def adauga_utilizator(self, username, parola, exercitii_active=None):
+        nou_nod = NodUtilizator(username, parola, exercitii_active)
         if not self.head:
             self.head = nou_nod
         else:
@@ -27,6 +27,21 @@ class ListaUtilizatori:
                 curent = curent.urmatorul
             curent.urmatorul = nou_nod
         return nou_nod
+
+    def sterge_utilizator(self, username):
+        if not self.head:
+            return
+
+        if self.head.username == username:
+            self.head = self.head.urmatorul
+            return
+
+        curent = self.head
+        while curent.urmatorul:
+            if curent.urmatorul.username == username:
+                curent.urmatorul = curent.urmatorul.urmatorul
+                return
+            curent = curent.urmatorul
 
     def gaseste_utilizator(self, username, parola):
         curent = self.head
@@ -51,7 +66,7 @@ class ListaUtilizatori:
             user_dict = {
                 "username": curent.username,
                 "parola": curent.parola,
-                "exercitiu_activ": curent.exercitiu_activ
+                "exercitii_active": curent.exercitii_active
             }
             data_de_salvat.append(user_dict)
             curent = curent.urmatorul
@@ -67,8 +82,8 @@ class ListaUtilizatori:
             with open(self.fisier_salvare, "r") as f:
                 data_incarcata = json.load(f)
                 for user in data_incarcata:
-                    activ = user.get("exercitiu_activ")
-                    self.adauga_utilizator(user["username"], user["parola"], activ)
+                    active = user.get("exercitii_active", [])
+                    self.adauga_utilizator(user["username"], user["parola"], active)
         except:
             pass
 
@@ -83,10 +98,6 @@ class AplicatieFitness(tk.Tk):
         self.lista_utilizatori.incarca_datele()
 
         self.user_curent = None
-
-        if not self.lista_utilizatori.head:
-            self.lista_utilizatori.adauga_utilizator("admin", "1234")
-            self.lista_utilizatori.salveaza_datele()
 
         container = tk.Frame(self)
         container.pack(side="top", fill="both", expand=True)
@@ -233,6 +244,8 @@ class PaginaDashboard(tk.Frame):
         super().__init__(parent)
         self.controller = controller
 
+        self.categorii_deschise = set()
+
         self.top_frame = tk.Frame(self)
         self.top_frame.pack(fill="x", pady=10)
         tk.Label(self.top_frame, text="Alege Antrenamentul", font=("Arial", 16)).pack()
@@ -269,8 +282,56 @@ class PaginaDashboard(tk.Frame):
         for categorie, exercitii in self.date_antrenamente.items():
             self.creeaza_categorie(self.scrollable_frame, categorie, exercitii)
 
-        tk.Button(self.scrollable_frame, text="Delogare", bg="#ffcccc",
-                  command=self.controller.logout_user).pack(pady=20)
+        btn_frame = tk.Frame(self.scrollable_frame)
+        btn_frame.pack(pady=20)
+
+        tk.Button(btn_frame, text="Delogare", bg="#ffcccc",
+                  command=self.controller.logout_user).pack(side="left", padx=10)
+
+        tk.Button(btn_frame, text="Șterge Cont", bg="red", fg="white",
+                  command=self.afiseaza_confirmare_stergere).pack(side="left", padx=10)
+
+    def afiseaza_confirmare_stergere(self):
+        for widget in self.scrollable_frame.winfo_children():
+            widget.destroy()
+
+        tk.Label(self.scrollable_frame, text="AVERTISMENT!", font=("Arial", 14, "bold"), fg="red").pack(pady=20)
+        tk.Label(self.scrollable_frame, text="Ești sigur că vrei să ștergi contul?\nAceastă acțiune este ireversibilă!",
+                 font=("Arial", 12)).pack(pady=10)
+
+        btn_confirm_frame = tk.Frame(self.scrollable_frame)
+        btn_confirm_frame.pack(pady=20)
+
+        tk.Button(btn_confirm_frame, text="DA, Șterge Contul", bg="red", fg="white",
+                  command=self.sterge_cont_curent).pack(side="left", padx=20)
+
+        tk.Button(btn_confirm_frame, text="NU, Întoarce-te", bg="#ccffcc",
+                  command=self.construieste_dashboard).pack(side="left", padx=20)
+
+    def afiseaza_confirmare_stop(self, nume_exercitiu):
+        for widget in self.scrollable_frame.winfo_children():
+            widget.destroy()
+
+        tk.Label(self.scrollable_frame, text="ATENȚIE!", font=("Arial", 14, "bold"), fg="red").pack(pady=20)
+        tk.Label(self.scrollable_frame,
+                 text="Ești sigur că vrei să întrerupi activitatea?\nTot progresul tău ar fi pierdut.",
+                 font=("Arial", 12)).pack(pady=10)
+
+        btn_confirm_frame = tk.Frame(self.scrollable_frame)
+        btn_confirm_frame.pack(pady=20)
+
+        tk.Button(btn_confirm_frame, text="DA, Stop", bg="red", fg="white",
+                  command=lambda: self.executa_stop(nume_exercitiu)).pack(side="left", padx=20)
+
+        tk.Button(btn_confirm_frame, text="NU, Anulează", bg="#ccffcc",
+                  command=self.construieste_dashboard).pack(side="left", padx=20)
+
+    def sterge_cont_curent(self):
+        nume_user = self.controller.user_curent.username
+        self.controller.lista_utilizatori.sterge_utilizator(nume_user)
+        self.controller.lista_utilizatori.salveaza_datele()
+        self.controller.logout_user()
+        messagebox.showinfo("Cont Șters", "Contul tău a fost șters cu succes.")
 
     def creeaza_categorie(self, parent, categorie, lista_exercitii):
         frame_categorie = tk.Frame(parent, borderwidth=1, relief="solid")
@@ -281,13 +342,22 @@ class PaginaDashboard(tk.Frame):
         def toggle_exercitii():
             if frame_exercitii.winfo_viewable():
                 frame_exercitii.pack_forget()
+                if categorie in self.categorii_deschise:
+                    self.categorii_deschise.remove(categorie)
             else:
                 frame_exercitii.pack(fill="x", pady=5)
+                self.categorii_deschise.add(categorie)
 
+        # SCHIMBARE MAJORĂ:
+        # Întotdeauna afișăm butonul cu Titlul Antrenamentului PRIMUL!
         tk.Button(frame_categorie, text=categorie, command=toggle_exercitii,
                   font=("Arial", 11, "bold"), bg="#e0e0e0").pack(fill="x")
 
-        exercitiu_activ_user = self.controller.user_curent.exercitiu_activ
+        # Abia apoi, DACA e deschis, afisam lista dedesubt.
+        if categorie in self.categorii_deschise:
+            frame_exercitii.pack(fill="x", pady=5)
+
+        lista_exercitii_active = self.controller.user_curent.exercitii_active
 
         for ex in lista_exercitii:
             row_frame = tk.Frame(frame_exercitii)
@@ -295,7 +365,7 @@ class PaginaDashboard(tk.Frame):
 
             tk.Label(row_frame, text=ex, anchor="w").pack(side="left")
 
-            if exercitiu_activ_user == ex:
+            if ex in lista_exercitii_active:
                 btn_frame = tk.Frame(row_frame)
                 btn_frame.pack(side="right")
 
@@ -303,20 +373,22 @@ class PaginaDashboard(tk.Frame):
                           command=lambda e=ex: self.arata_progres(e)).pack(side="left", padx=2)
 
                 tk.Button(btn_frame, text="STOP", bg="#ffcccc", font=("Arial", 8),
-                          command=self.stop_exercitiu).pack(side="left", padx=2)
+                          command=lambda e=ex: self.afiseaza_confirmare_stop(e)).pack(side="left", padx=2)
             else:
                 tk.Button(row_frame, text="START", bg="#90ee90", font=("Arial", 8),
                           command=lambda e=ex: self.porneste_exercitiu(e)).pack(side="right")
 
     def porneste_exercitiu(self, nume_exercitiu):
-        self.controller.user_curent.exercitiu_activ = nume_exercitiu
-        self.controller.lista_utilizatori.salveaza_datele()
-        self.construieste_dashboard()
+        if nume_exercitiu not in self.controller.user_curent.exercitii_active:
+            self.controller.user_curent.exercitii_active.append(nume_exercitiu)
+            self.controller.lista_utilizatori.salveaza_datele()
+            self.construieste_dashboard()
 
-    def stop_exercitiu(self):
-        self.controller.user_curent.exercitiu_activ = None
-        self.controller.lista_utilizatori.salveaza_datele()
-        self.construieste_dashboard()
+    def executa_stop(self, nume_exercitiu):
+        if nume_exercitiu in self.controller.user_curent.exercitii_active:
+            self.controller.user_curent.exercitii_active.remove(nume_exercitiu)
+            self.controller.lista_utilizatori.salveaza_datele()
+            self.construieste_dashboard()
 
     def arata_progres(self, nume):
         messagebox.showinfo("Progres", f"Aici vei vedea progresul pentru: {nume}")
