@@ -1,17 +1,10 @@
 [
     {
-        "username": "admin",
-        "parola": "1234",
-        "exercitiu_activ": "Bench Press"
-    },
-    {
-        "username": "blabla",
-        "parola": "test",
-        "exercitiu_activ": null
-    },
-    {
         "username": "tudor",
         "parola": "1111",
-        "exercitiu_activ": "Seated Cable Rows"
+        "exercitii_active": [
+            "Cable Crossovers",
+            "Tricep Dips"
+        ]
     }
 ]
