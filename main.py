@@ -1,91 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
-import json
-import os
-
-
-class NodUtilizator:
-    def __init__(self, username, parola, exercitii_active=None):
-        self.username = username
-        self.parola = parola
-        self.exercitii_active = exercitii_active if exercitii_active is not None else []
-        self.urmatorul = None
-
-
-class ListaUtilizatori:
-    def __init__(self):
-        self.head = None
-        self.fisier_salvare = "users.json"
-
-    def adauga_utilizator(self, username, parola, exercitii_active=None):
-        nou_nod = NodUtilizator(username, parola, exercitii_active)
-        if not self.head:
-            self.head = nou_nod
-        else:
-            curent = self.head
-            while curent.urmatorul:
-                curent = curent.urmatorul
-            curent.urmatorul = nou_nod
-        return nou_nod
-
-    def sterge_utilizator(self, username):
-        if not self.head:
-            return
-
-        if self.head.username == username:
-            self.head = self.head.urmatorul
-            return
-
-        curent = self.head
-        while curent.urmatorul:
-            if curent.urmatorul.username == username:
-                curent.urmatorul = curent.urmatorul.urmatorul
-                return
-            curent = curent.urmatorul
-
-    def gaseste_utilizator(self, username, parola):
-        curent = self.head
-        while curent:
-            if curent.username == username and curent.parola == parola:
-                return curent
-            curent = curent.urmatorul
-        return None
-
-    def exista_username(self, username):
-        curent = self.head
-        while curent:
-            if curent.username == username:
-                return True
-            curent = curent.urmatorul
-        return False
-
-    def salveaza_datele(self):
-        data_de_salvat = []
-        curent = self.head
-        while curent:
-            user_dict = {
-                "username": curent.username,
-                "parola": curent.parola,
-                "exercitii_active": curent.exercitii_active
-            }
-            data_de_salvat.append(user_dict)
-            curent = curent.urmatorul
-
-        with open(self.fisier_salvare, "w") as f:
-            json.dump(data_de_salvat, f, indent=4)
-
-    def incarca_datele(self):
-        if not os.path.exists(self.fisier_salvare):
-            return
-
-        try:
-            with open(self.fisier_salvare, "r") as f:
-                data_incarcata = json.load(f)
-                for user in data_incarcata:
-                    active = user.get("exercitii_active", [])
-                    self.adauga_utilizator(user["username"], user["parola"], active)
-        except:
-            pass
+from database import Database
+from workout_logic import WorkoutSession
 
 
 class AplicatieFitness(tk.Tk):
@@ -94,34 +10,28 @@ class AplicatieFitness(tk.Tk):
         self.title("Aplicație Activitate Fizică")
         self.geometry("450x600")
 
-        self.lista_utilizatori = ListaUtilizatori()
-        self.lista_utilizatori.incarca_datele()
-
+        self.db = Database()
         self.user_curent = None
 
         container = tk.Frame(self)
-        container.pack(side="top", fill="both", expand=True)
-        container.grid_rowconfigure(0, weight=1)
-        container.grid_columnconfigure(0, weight=1)
+        container.pack(fill="both", expand=True)
 
         self.frames = {}
-
         for F in (PaginaStart, PaginaLogin, PaginaSignUp, PaginaSucces, PaginaDashboard):
-            page_name = F.__name__
-            frame = F(parent=container, controller=self)
-            self.frames[page_name] = frame
+            frame = F(container, self)
+            self.frames[F.__name__] = frame
             frame.grid(row=0, column=0, sticky="nsew")
 
         self.show_frame("PaginaStart")
 
-    def show_frame(self, page_name):
-        frame = self.frames[page_name]
-        if page_name == "PaginaDashboard":
+    def show_frame(self, name):
+        frame = self.frames[name]
+        if name == "PaginaDashboard":
             frame.construieste_dashboard()
         frame.tkraise()
 
-    def login_user(self, nod_user):
-        self.user_curent = nod_user
+    def login_user(self, user_id, username):
+        self.user_curent = {"id": user_id, "username": username}
         self.show_frame("PaginaDashboard")
 
     def logout_user(self):
@@ -132,13 +42,10 @@ class AplicatieFitness(tk.Tk):
 class PaginaStart(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent)
-        label = tk.Label(self, text="Bine ai venit!", font=("Arial", 18))
-        label.pack(pady=40)
-
-        tk.Button(self, text="1. Log In", width=20, height=2,
+        tk.Label(self, text="Bine ai venit!", font=("Arial", 18)).pack(pady=40)
+        tk.Button(self, text="Log In", width=20,
                   command=lambda: controller.show_frame("PaginaLogin")).pack(pady=10)
-
-        tk.Button(self, text="2. Sign Up", width=20, height=2,
+        tk.Button(self, text="Sign Up", width=20,
                   command=lambda: controller.show_frame("PaginaSignUp")).pack(pady=10)
 
 
@@ -147,49 +54,38 @@ class PaginaSignUp(tk.Frame):
         super().__init__(parent)
         self.controller = controller
 
-        tk.Label(self, text="Creare Cont Nou", font=("Arial", 16)).pack(pady=20)
+        tk.Label(self, text="Creare cont", font=("Arial", 16)).pack(pady=20)
 
-        tk.Label(self, text="Alege un Username:").pack()
         self.entry_user = tk.Entry(self)
-        self.entry_user.pack(pady=5)
-
-        tk.Label(self, text="Alege o Parolă:").pack()
         self.entry_pass = tk.Entry(self, show="*")
-        self.entry_pass.pack(pady=5)
+        self.entry_conf = tk.Entry(self, show="*")
 
-        tk.Label(self, text="Confirmă Parola:").pack()
-        self.entry_confirm = tk.Entry(self, show="*")
-        self.entry_confirm.pack(pady=5)
+        for txt, w in [("Username", self.entry_user),
+                       ("Parola", self.entry_pass),
+                       ("Confirmă parola", self.entry_conf)]:
+            tk.Label(self, text=txt).pack()
+            w.pack(pady=5)
 
-        tk.Button(self, text="Creare Cont", bg="#ccffcc",
-                  command=self.proceseaza_signup).pack(pady=20)
+        tk.Button(self, text="Creează",
+                  command=self.signup).pack(pady=20)
 
         tk.Button(self, text="Înapoi",
                   command=lambda: controller.show_frame("PaginaStart")).pack()
 
-    def proceseaza_signup(self):
-        user = self.entry_user.get()
-        parola = self.entry_pass.get()
-        confirm = self.entry_confirm.get()
+    def signup(self):
+        u = self.entry_user.get()
+        p = self.entry_pass.get()
+        c = self.entry_conf.get()
 
-        if not user or not parola:
-            messagebox.showwarning("Eroare", "Toate câmpurile sunt obligatorii!")
+        if not u or not p:
+            messagebox.showerror("Eroare", "Completează toate câmpurile")
             return
-
-        if parola != confirm:
-            messagebox.showerror("Eroare", "Parolele nu se potrivesc!")
+        if p != c:
+            messagebox.showerror("Eroare", "Parolele nu coincid")
             return
-
-        if self.controller.lista_utilizatori.exista_username(user):
-            messagebox.showerror("Eroare", f"Username-ul '{user}' este deja folosit!")
+        if not self.controller.db.adauga_utilizator(u, p):
+            messagebox.showerror("Eroare", "Username deja existent")
             return
-
-        self.controller.lista_utilizatori.adauga_utilizator(user, parola)
-        self.controller.lista_utilizatori.salveaza_datele()
-
-        self.entry_user.delete(0, 'end')
-        self.entry_pass.delete(0, 'end')
-        self.entry_confirm.delete(0, 'end')
 
         self.controller.show_frame("PaginaSucces")
 
@@ -197,11 +93,10 @@ class PaginaSignUp(tk.Frame):
 class PaginaSucces(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent)
-        label = tk.Label(self, text="Contul a fost creat\ncu succes!",
-                         font=("Arial", 16), fg="green")
-        label.pack(pady=50)
-        tk.Button(self, text="Înapoi la Pagina de Start", width=25, height=2,
-                  command=lambda: controller.show_frame("PaginaStart")).pack(pady=20)
+        tk.Label(self, text="Cont creat cu succes!",
+                 fg="green", font=("Arial", 16)).pack(pady=50)
+        tk.Button(self, text="Înapoi",
+                  command=lambda: controller.show_frame("PaginaStart")).pack()
 
 
 class PaginaLogin(tk.Frame):
@@ -211,32 +106,27 @@ class PaginaLogin(tk.Frame):
 
         tk.Label(self, text="Autentificare", font=("Arial", 16)).pack(pady=30)
 
-        tk.Label(self, text="Username:").pack()
         self.entry_user = tk.Entry(self)
-        self.entry_user.pack(pady=5)
-
-        tk.Label(self, text="Parola:").pack()
         self.entry_pass = tk.Entry(self, show="*")
-        self.entry_pass.pack(pady=5)
 
-        tk.Button(self, text="Intră în cont",
-                  command=self.verifica_login).pack(pady=20)
+        tk.Label(self, text="Username").pack()
+        self.entry_user.pack()
+        tk.Label(self, text="Parola").pack()
+        self.entry_pass.pack()
 
-        tk.Button(self, text="Înapoi",
-                  command=lambda: controller.show_frame("PaginaStart")).pack()
+        tk.Button(self, text="Login",
+                  command=self.login).pack(pady=20)
 
-    def verifica_login(self):
-        user = self.entry_user.get()
-        parola = self.entry_pass.get()
+    def login(self):
+        u = self.entry_user.get()
+        p = self.entry_pass.get()
+        rezultat = self.controller.db.autentifica(u, p)
 
-        nod_gasit = self.controller.lista_utilizatori.gaseste_utilizator(user, parola)
-
-        if nod_gasit:
-            self.entry_user.delete(0, 'end')
-            self.entry_pass.delete(0, 'end')
-            self.controller.login_user(nod_gasit)
+        if rezultat:
+            user_id, username = rezultat
+            self.controller.login_user(user_id, username)
         else:
-            messagebox.showerror("Eroare", "Username sau parolă greșită!")
+            messagebox.showerror("Eroare", "Login invalid")
 
 
 class PaginaDashboard(tk.Frame):
@@ -244,154 +134,153 @@ class PaginaDashboard(tk.Frame):
         super().__init__(parent)
         self.controller = controller
 
-        self.categorii_deschise = set()
+        # o singură sesiune activă permisă
+        self.sesiuni = {}
 
-        self.top_frame = tk.Frame(self)
-        self.top_frame.pack(fill="x", pady=10)
-        tk.Label(self.top_frame, text="Alege Antrenamentul", font=("Arial", 16)).pack()
-
-        self.canvas = tk.Canvas(self)
-        self.scrollbar = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = tk.Frame(self.canvas)
-
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-
-        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
-
-        self.date_antrenamente = {
-            "Antrenament Piept": ["Bench Press", "Flyers", "Cable Crossovers"],
-            "Antrenament Picioare": ["Leg Press", "Calf Raises", "Squats"],
-            "Antrenament Spate": ["Seated Cable Rows", "Deadlift", "Pull Ups"],
-            "Antrenament Brate": ["Bicep Curl", "Tricep Dips", "Overhead Press"]
+        self.antrenamente = {
+            "Piept": ["Bench Press", "Flyers", "Cable Crossovers"],
+            "Picioare": ["Squats", "Leg Press", "Calf Raises"],
+            "Spate": ["Pull Ups", "Deadlift", "Seated Rows"]
         }
 
     def construieste_dashboard(self):
-        for widget in self.scrollable_frame.winfo_children():
-            widget.destroy()
+        for w in self.winfo_children():
+            w.destroy()
 
-        tk.Label(self.scrollable_frame, text=f"Utilizator: {self.controller.user_curent.username}",
-                 fg="gray").pack(pady=5)
+        user_id = self.controller.user_curent["id"]
+        active = self.controller.db.exercitii_user(user_id)
 
-        for categorie, exercitii in self.date_antrenamente.items():
-            self.creeaza_categorie(self.scrollable_frame, categorie, exercitii)
+        tk.Label(self, text=f"Utilizator: {self.controller.user_curent['username']}",
+                 fg="gray").pack(pady=10)
 
-        btn_frame = tk.Frame(self.scrollable_frame)
-        btn_frame.pack(pady=20)
+        for cat, exs in self.antrenamente.items():
+            tk.Label(self, text=cat, font=("Arial", 12, "bold")).pack(pady=5)
+            for ex in exs:
+                frame = tk.Frame(self)
+                frame.pack(fill="x", padx=20)
+                tk.Label(frame, text=ex).pack(side="left")
 
-        tk.Button(btn_frame, text="Delogare", bg="#ffcccc",
-                  command=self.controller.logout_user).pack(side="left", padx=10)
+                if ex in self.sesiuni:
+                    tk.Button(frame, text="Vezi progres",
+                              command=lambda e=ex: self.vezi_progres(e)).pack(side="right")
+                    tk.Button(frame, text="STOP",
+                              command=lambda e=ex: self.stop(e)).pack(side="right")
 
-        tk.Button(btn_frame, text="Șterge Cont", bg="red", fg="white",
-                  command=self.afiseaza_confirmare_stergere).pack(side="left", padx=10)
+                elif ex in active:
+                    tk.Button(frame, text="STOP",
+                              command=lambda e=ex: self.stop(e)).pack(side="right")
 
-    def afiseaza_confirmare_stergere(self):
-        for widget in self.scrollable_frame.winfo_children():
-            widget.destroy()
+                else:
+                    tk.Button(frame, text="START",
+                              command=lambda e=ex: self.start(e)).pack(side="right")
 
-        tk.Label(self.scrollable_frame, text="AVERTISMENT!", font=("Arial", 14, "bold"), fg="red").pack(pady=20)
-        tk.Label(self.scrollable_frame, text="Ești sigur că vrei să ștergi contul?\nAceastă acțiune este ireversibilă!",
-                 font=("Arial", 12)).pack(pady=10)
+        tk.Button(self, text="Delogare",
+                  command=self.controller.logout_user,
+                  bg="#ffcccc").pack(pady=20)
 
-        btn_confirm_frame = tk.Frame(self.scrollable_frame)
-        btn_confirm_frame.pack(pady=20)
+    def start(self, exercitiu):
+        # ❌ blocare start multiplu
+        if self.sesiuni:
+            messagebox.showwarning(
+                "Exercițiu deja activ",
+                "Există deja un exercițiu activ.\n"
+                "Oprește-l înainte de a începe altul."
+            )
+            return
 
-        tk.Button(btn_confirm_frame, text="DA, Șterge Contul", bg="red", fg="white",
-                  command=self.sterge_cont_curent).pack(side="left", padx=20)
+        self.sesiuni[exercitiu] = WorkoutSession(exercitiu)
+        self.controller.db.adauga_exercitiu(
+            self.controller.user_curent["id"], exercitiu
+        )
+        self.construieste_dashboard()
 
-        tk.Button(btn_confirm_frame, text="NU, Întoarce-te", bg="#ccffcc",
-                  command=self.construieste_dashboard).pack(side="left", padx=20)
+    def vezi_progres(self, exercitiu):
+        sesiune = self.sesiuni.get(exercitiu)
+        if not sesiune:
+            messagebox.showinfo("Progres exercițiu",
+                                "Nu există o sesiune activă pentru acest exercițiu.")
+            return
 
-    def afiseaza_confirmare_stop(self, nume_exercitiu):
-        for widget in self.scrollable_frame.winfo_children():
-            widget.destroy()
+        win = tk.Toplevel(self)
+        win.title(f"Progres - {exercitiu}")
+        win.geometry("420x360")
+        win.resizable(False, False)
 
-        tk.Label(self.scrollable_frame, text="ATENȚIE!", font=("Arial", 14, "bold"), fg="red").pack(pady=20)
-        tk.Label(self.scrollable_frame,
-                 text="Ești sigur că vrei să întrerupi activitatea?\nTot progresul tău ar fi pierdut.",
-                 font=("Arial", 12)).pack(pady=10)
+        lbl_state = tk.Label(win, font=("Arial", 10))
+        lbl_state.pack(pady=4)
 
-        btn_confirm_frame = tk.Frame(self.scrollable_frame)
-        btn_confirm_frame.pack(pady=20)
+        lbl_time = tk.Label(win, font=("Arial", 12))
+        lbl_time.pack(pady=4)
 
-        tk.Button(btn_confirm_frame, text="DA, Stop", bg="red", fg="white",
-                  command=lambda: self.executa_stop(nume_exercitiu)).pack(side="left", padx=20)
+        lbl_reps = tk.Label(win, font=("Arial", 12))
+        lbl_reps.pack(pady=4)
 
-        tk.Button(btn_confirm_frame, text="NU, Anulează", bg="#ccffcc",
-                  command=self.construieste_dashboard).pack(side="left", padx=20)
+        lbl_sets = tk.Label(win, font=("Arial", 12))
+        lbl_sets.pack(pady=4)
 
-    def sterge_cont_curent(self):
-        nume_user = self.controller.user_curent.username
-        self.controller.lista_utilizatori.sterge_utilizator(nume_user)
-        self.controller.lista_utilizatori.salveaza_datele()
-        self.controller.logout_user()
-        messagebox.showinfo("Cont Șters", "Contul tău a fost șters cu succes.")
+        lbl_cal = tk.Label(win, font=("Arial", 12))
+        lbl_cal.pack(pady=4)
 
-    def creeaza_categorie(self, parent, categorie, lista_exercitii):
-        frame_categorie = tk.Frame(parent, borderwidth=1, relief="solid")
-        frame_categorie.pack(fill="x", pady=5, padx=10)
+        pause_win = {"win": None, "label": None}
 
-        frame_exercitii = tk.Frame(frame_categorie)
+        def update():
+            if not win.winfo_exists():
+                return
 
-        def toggle_exercitii():
-            if frame_exercitii.winfo_viewable():
-                frame_exercitii.pack_forget()
-                if categorie in self.categorii_deschise:
-                    self.categorii_deschise.remove(categorie)
-            else:
-                frame_exercitii.pack(fill="x", pady=5)
-                self.categorii_deschise.add(categorie)
+            sesiune.step()
 
-        # SCHIMBARE MAJORĂ:
-        # Întotdeauna afișăm butonul cu Titlul Antrenamentului PRIMUL!
-        tk.Button(frame_categorie, text=categorie, command=toggle_exercitii,
-                  font=("Arial", 11, "bold"), bg="#e0e0e0").pack(fill="x")
+            lbl_state.config(text=f"Stare: {sesiune.get_state()}")
+            lbl_time.config(text=f"Timp total: {sesiune.get_duration()} sec")
+            lbl_reps.config(text=f"Repetiții totale: {sesiune.get_reps_total()}")
+            lbl_sets.config(text=f"Serii: {sesiune.get_sets()}")
+            lbl_cal.config(text=f"Calorii arse: {sesiune.calories()} kcal")
 
-        # Abia apoi, DACA e deschis, afisam lista dedesubt.
-        if categorie in self.categorii_deschise:
-            frame_exercitii.pack(fill="x", pady=5)
+            if sesiune.pause_just_started:
+                pw = tk.Toplevel(win)
+                pw.title("Pauză")
+                pw.geometry("350x250")
+                pw.resizable(False, False)
 
-        lista_exercitii_active = self.controller.user_curent.exercitii_active
+                tk.Label(pw, text="Pauză! Odihnește-te 1:30",
+                         font=("Arial", 12, "bold")).pack(pady=10)
+                l = tk.Label(pw, font=("Arial", 18))
+                l.pack(pady=10)
 
-        for ex in lista_exercitii:
-            row_frame = tk.Frame(frame_exercitii)
-            row_frame.pack(fill="x", pady=2, padx=10)
+                pause_win["win"] = pw
+                pause_win["label"] = l
 
-            tk.Label(row_frame, text=ex, anchor="w").pack(side="left")
+            if sesiune.in_pause and pause_win["win"]:
+                pause_win["label"].config(
+                    text=f"{sesiune.get_pause_remaining()} sec"
+                )
+            elif not sesiune.in_pause and pause_win["win"]:
+                pause_win["win"].destroy()
+                pause_win["win"] = None
+                pause_win["label"] = None
 
-            if ex in lista_exercitii_active:
-                btn_frame = tk.Frame(row_frame)
-                btn_frame.pack(side="right")
+            win.after(1000, update)
 
-                tk.Button(btn_frame, text="Vezi Progres", bg="lightblue", font=("Arial", 8),
-                          command=lambda e=ex: self.arata_progres(e)).pack(side="left", padx=2)
+        update()
 
-                tk.Button(btn_frame, text="STOP", bg="#ffcccc", font=("Arial", 8),
-                          command=lambda e=ex: self.afiseaza_confirmare_stop(e)).pack(side="left", padx=2)
-            else:
-                tk.Button(row_frame, text="START", bg="#90ee90", font=("Arial", 8),
-                          command=lambda e=ex: self.porneste_exercitiu(e)).pack(side="right")
+    def stop(self, exercitiu):
+        sesiune = self.sesiuni.pop(exercitiu, None)
 
-    def porneste_exercitiu(self, nume_exercitiu):
-        if nume_exercitiu not in self.controller.user_curent.exercitii_active:
-            self.controller.user_curent.exercitii_active.append(nume_exercitiu)
-            self.controller.lista_utilizatori.salveaza_datele()
-            self.construieste_dashboard()
+        if sesiune:
+            sesiune.step()
+            self.controller.db.salveaza_antrenament(
+                self.controller.user_curent["id"],
+                exercitiu,
+                sesiune.start_clock(),
+                sesiune.get_duration(),
+                sesiune.get_reps_total(),
+                sesiune.get_sets(),
+                sesiune.calories()
+            )
 
-    def executa_stop(self, nume_exercitiu):
-        if nume_exercitiu in self.controller.user_curent.exercitii_active:
-            self.controller.user_curent.exercitii_active.remove(nume_exercitiu)
-            self.controller.lista_utilizatori.salveaza_datele()
-            self.construieste_dashboard()
-
-    def arata_progres(self, nume):
-        messagebox.showinfo("Progres", f"Aici vei vedea progresul pentru: {nume}")
+        self.controller.db.sterge_exercitiu(
+            self.controller.user_curent["id"], exercitiu
+        )
+        self.construieste_dashboard()
 
 
 if __name__ == "__main__":
