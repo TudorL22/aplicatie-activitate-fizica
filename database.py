@@ -77,6 +77,11 @@ class Database:
         )
         self.conn.commit()
 
+    # --- FIX: Functie pentru stergerea exercitiilor ramase blocate la logout ---
+    def sterge_toate_exercitiile_active(self, user_id):
+        self.cursor.execute("DELETE FROM exercitii_active WHERE user_id=?", (user_id,))
+        self.conn.commit()
+
     def exercitii_user(self, user_id):
         self.cursor.execute(
             "SELECT exercitiu FROM exercitii_active WHERE user_id=?",
@@ -86,9 +91,26 @@ class Database:
 
     def salveaza_antrenament(self, user_id, exercitiu,
                              start_time, duration, reps, sets, calories):
+        # Aceasta functie este apelata DOAR la STOP, deci respecta cerinta ta
         self.cursor.execute("""
         INSERT INTO workout_history
         (user_id, exercitiu, start_time, duration, reps, sets, calories)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (user_id, exercitiu, start_time, duration, reps, sets, calories))
+        self.conn.commit()
+
+    def get_istoric_text(self, user_id):
+        self.cursor.execute(
+            "SELECT exercitiu, start_time, reps, sets FROM workout_history WHERE user_id=? ORDER BY id DESC",
+            (user_id,)
+        )
+        rows = self.cursor.fetchall()
+        istoric = []
+        for r in rows:
+            istoric.append(f"{r[0]} (Ora: {r[1]}, Serii: {r[3]}, Repetari: {r[2]})")
+        return istoric
+
+    # --- FIX: Functie noua pentru a goli istoricul la inceput de sesiune ---
+    def sterge_istoric_sesiune(self, user_id):
+        self.cursor.execute("DELETE FROM workout_history WHERE user_id=?", (user_id,))
         self.conn.commit()
