@@ -1,0 +1,14 @@
+# ascunde fisierul cu cheia AI
+.env
+*.env
+
+# ascunde baza de date
+*.db
+fitness.db
+
+# fisiere temporare Python
+__pycache__/
+*.pyc
+
+# fisiere PyCharm
+.idea/

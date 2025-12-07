@@ -1,39 +1,50 @@
+import os
+from dotenv import load_dotenv
 import google.generativeai as genai
 
-# PUNE CHEIA TA AICI
-GOOGLE_API_KEY = "AIzaSyC1tczJXqTUaT5r7BhkrxaeuAAYCQmqnX4"
+# Încărcăm variabilele din .env
+load_dotenv()
+
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 
 class AntrenorAI:
     def __init__(self):
+        # Dacă nu găsește cheia → AI dezactivat
+        if not GOOGLE_API_KEY or GOOGLE_API_KEY.strip() == "":
+            print("⚠ AVERTISMENT: Nu există API key în .env")
+            self.activ = False
+            return
+
         try:
             genai.configure(api_key=GOOGLE_API_KEY)
-            self.model = genai.GenerativeModel('gemini-2.5-pro')
+            self.model = genai.GenerativeModel('gemini-2.5-flash')
+
             self.activ = True
         except Exception as e:
-            print(f"Eroare AI: {e}")
+            print("Eroare configurare AI:", e)
             self.activ = False
 
     def chat_cu_antrenorul(self, mesaj_user, istoric, active, exercitii_disponibile):
         if not self.activ:
-            return "Eroare: AI neconfigurat sau cheie incorectă."
+            return (
+                "AI-ul nu este configurat. Verifică fișierul .env "
+                "și adaugă GOOGLE_API_KEY."
+            )
 
         context = f"""
-        Ești un antrenor personal de fitness.
+Ești un antrenor personal profesionist.
+Istoric utilizator: {istoric}
+Exerciții active: {active}
+Exerciții disponibile: {exercitii_disponibile}
 
-        CONTEXT UTILIZATOR:
-        - Istoric (ce a terminat deja): {istoric}
-        - Exerciții ACTIVE acum (ce lucrează): {active}
+Întrebarea utilizatorului: {mesaj_user}
 
-        REGULĂ: Recomandă DOAR exerciții din această listă disponibilă: {exercitii_disponibile}
-
-        ÎNTREBAREA UTILIZATORULUI: "{mesaj_user}"
-
-        Răspunde scurt și util.
-        """
+Răspunde scurt, logic și personalizat.
+"""
 
         try:
-            response = self.model.generate_content(context)
-            return response.text
+            reply = self.model.generate_content(context)
+            return reply.text
         except Exception as e:
-            return f"Eroare conexiune: {e}"
+            return f"Eroare în conectarea la AI: {e}"
