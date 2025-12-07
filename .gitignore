@@ -1,14 +1,22 @@
-# ascunde fisierul cu cheia AI
+# --- Security (CRITICAL) ---
 .env
-*.env
 
-# ascunde baza de date
-*.db
-fitness.db
-
-# fisiere temporare Python
+# --- Python Compiled Files ---
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 
-# fisiere PyCharm
+# --- PyCharm / IDE Settings ---
 .idea/
+.vscode/
+
+# --- Virtual Environments ---
+venv/
+env/
+.venv/
+
+# --- OS Generated Files ---
+.DS_Store
+Thumbs.db
+
+*.db
