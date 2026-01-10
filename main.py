@@ -1,65 +1,48 @@
+import sys
+import subprocess
+import importlib.util
+
+# ---------------- AUTO-INSTALLER ----------------
+def instaleaza_biblioteci():
+    """
+    Verifică și instalează automat bibliotecile necesare.
+    """
+    # Dictionar: { "Numele folosit in import": "Numele pentru pip install" }
+    required = {
+        "google.generativeai": "google-generativeai",
+        "dotenv": "python-dotenv"
+    }
+
+    instalate_ceva = False
+
+    for lib_import, lib_install in required.items():
+        # Verificam daca biblioteca exista
+        if importlib.util.find_spec(lib_import) is None:
+            print(f"⚠️ Biblioteca '{lib_install}' lipsește. Se instalează automat...")
+            try:
+                # Ruleaza comanda pip install in spate
+                subprocess.check_call([sys.executable, "-m", "pip", "install", lib_install])
+                print(f"✅ '{lib_install}' instalată cu succes!")
+                instalate_ceva = True
+            except subprocess.CalledProcessError:
+                print(f"❌ Eroare la instalarea '{lib_install}'. Te rog instalează manual.")
+
+    if instalate_ceva:
+        print("🎉 Toate bibliotecile sunt gata! Pornim aplicația...\n")
+
+
+# Rulam verificarea INAINTE de a importa modulele aplicatiei
+instaleaza_biblioteci()
+
+
+
 import tkinter as tk
 from tkinter import messagebox
 import threading  # <--- IMPORT NECESAR PENTRU MULTITHREADING
 from database import Database
 from workout_logic import WorkoutSession
 from ai_logic import AntrenorAI
-
-
-# ----------- FITNESS NEON DARK THEME -----------
-
-
-
-# Fundal principal
-BG_MAIN      = "#0D0B21"   # navy + violet foarte închis
-
-# Panouri / carduri
-PANEL_BG     = "#16162A"   # violet grafit
-
-# Texte
-TEXT_FG      = "#F2F3FA"   # aproape alb
-TEXT_SUB     = "#AAB0C8"   # gri deschis-violet
-
-# Entry-uri
-ENTRY_BG  = "#FFFFFF"   # alb curat
-ENTRY_FG  = "#0A0F24"   # albastru foarte închis (blue-black)
-
-# Buton primar — gradient neon violet
-BTN_PRIMARY_BG       = "#7B2FFF"
-BTN_PRIMARY_HOVER    = "#9B54FF"
-BTN_PRIMARY_FG       = "white"
-
-# Buton Start — turcoaz neon
-BTN_START_BG         = "#00D9A3"
-BTN_START_HOVER      = "#00E8B2"
-BTN_START_FG         = "black"
-
-# Buton Stop — roșu neon
-BTN_STOP_BG          = "#FF3B6A"
-BTN_STOP_HOVER       = "#FF5C86"
-BTN_STOP_FG          = "white"
-
-# Buton secundar (de ex. Înapoi)
-BTN_SECONDARY_BG     = "#2E2E45"
-BTN_SECONDARY_HOVER  = "#3C3C55"
-BTN_SECONDARY_FG     = "white"
-
-# Compatibilitate cu vechiul cod
-BTN_BG       = BTN_PRIMARY_BG
-BTN_BG_HOVER = BTN_PRIMARY_HOVER
-BTN_FG       = BTN_PRIMARY_FG
-
-
-
-# -------- COMPATIBILITATE CU CODUL VECHI --------
-BTN_BG = BTN_PRIMARY_BG
-BTN_BG_HOVER = BTN_PRIMARY_HOVER
-BTN_FG = BTN_PRIMARY_FG
-
-BTN_HEIGHT = 3   # înălțime mai mare
-BTN_PADY   = 6   # distanță verticală în interior
-BTN_PADX   = 10  # distanță laterală
-
+from theme import *
 
 
 class AplicatieFitness(tk.Tk):
